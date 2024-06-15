@@ -58,15 +58,62 @@ fn test_solver() {
         ]
     };
     let agents = vec![agent1, agent2, agent3];
+
+    // run
     let actual = run(&agents, schedule);
+
+    // assert
     let agent_paths = actual.routes.iter()
-        .map(|(n, paths)| (agents.iter().find(|a| a.name == *n).unwrap(), paths))
+        .map(|(n, paths)| (agents.iter().find(|a| a.name == *n).unwrap(), paths.iter()))
         .sorted_by_key(|(a, _)| a.order)
-        .collect::<Vec<(&Agent, &Vec<Path>)>>();
+        .map(|(n, paths)| (n, paths.flat_map(path_to_spacetime).collect::<Vec<PointST>>()))
+        .collect::<Vec<(&Agent, Vec<PointST>)>>();
+
+    // safety distances
+    for (t1, t2) in agent_paths.iter().tuple_windows() {
+            let (a1, p1) = t1;
+            let (a2, p2) = t2;
+            let sd = f64::max(a1.safety_x, a2.safety_x);
+
+            all_first_points_outside_sd(p1, a2, p2, sd);
+            all_first_points_outside_sd(p2, a1, p1, sd);
+    }
+
     let a = 1;
+    let b = a + 1;
 
 }
 
+fn all_first_points_outside_sd(p1: &Vec<PointST>, a2: &&Agent, p2: &Vec<PointST>, sd: f64) -> () {
+    for p in p1.iter() {
+        let c = interpolate(p, *a2, p2);
+        if c.is_some() {
+            let cond = f64::abs(p.x - c.unwrap().x) >= sd;
+            if !cond {
+                let _a = 1;
+                println!("Point {}, {}, {}", p.x, p.t, c.unwrap().x);
+            }
+            //assert!(f64::abs(p.x - c.unwrap().x) >= sd);
+        }
+    }
+}
+
+fn interpolate(p: &PointST, a: &Agent, pts: &[PointST]) -> Option<Coord> {
+    let oi = pts.iter().position(|pt| p.t < pt.t);
+    oi.map(|i| (pts[i-1].clone(), pts[i].clone()))
+        .map(|(p1, p2)| {
+            let sgn_vx = if p2.x > p1.x { 1.0 } else if p2.x < p1.x { -1.0 } else { 0.0 };
+            let sgn_vy = if p2.y > p1.y { 1.0 } else if p2.y < p1.y { -1.0 } else { 0.0 };
+            let max_dx = f64::abs(p1.x - p2.x);
+            let max_dy = f64::abs(p1.y - p2.y);
+            Coord { 
+                x: p1.x + sgn_vx * f64::min(a.velocity.x * (p.t - p1.t), max_dx),
+                y: p1.y + sgn_vy * f64::min(a.velocity.y * (p.t - p1.t), max_dy)
+            }
+        })
+}
+
+#[derive(Clone)]
 struct PointST {
     x: f64,
     y: f64,
