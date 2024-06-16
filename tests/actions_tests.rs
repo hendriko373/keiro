@@ -1,7 +1,6 @@
 use geo::Coord;
 use itertools::Itertools;
-use keiro::actions::{self, run, Action, Agent, Path, Schedule};
-use serde::{Deserialize, Serialize};
+use keiro::actions::{PointST, run, Action, Agent, Schedule};
 
 
 #[test]
@@ -66,7 +65,7 @@ fn test_solver() {
     // assert
     let agent_paths = actual.routes.iter()
         .sorted_by_key(|(a, _)| a.order)
-        .map(|(n, paths)| (n, paths.iter().flat_map(path_to_spacetime).collect::<Vec<PointST>>()))
+        .map(|(n, paths)| (n, paths.iter().flat_map(|p| p.to_points_st()).collect::<Vec<PointST>>()))
         .collect::<Vec<(&Agent, Vec<PointST>)>>();
 
     let ser_paths = agent_paths.iter().map(|(_, paths)| paths).collect::<Vec<&Vec<PointST>>>();
@@ -119,28 +118,4 @@ fn interpolate(p: &PointST, a: &Agent, pts: &[PointST]) -> Option<Coord> {
         })
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-struct PointST {
-    x: f64,
-    y: f64,
-    t: f64
-}
-
-fn path_to_spacetime(path: &Path) -> Vec<PointST> {
-    let mut result = match path.moves.first() {
-        Some(s) => vec![PointST {x: s.start.x, y: s.start.y, t: path.t_start} ],
-        None => vec![]
-    };
-    let mut clock = path.t_start;
-    for s in path.moves.iter() {
-        clock = clock + s.duration;
-        result.push(PointST {x: s.end.x, y: s.end.y, t: clock})
-    }
-    result.push(PointST {
-        x: path.action.target.x, 
-        y: path.action.target.y, 
-        t: clock + path.action.duration
-    });
-    result
-}
 

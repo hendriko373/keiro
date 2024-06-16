@@ -1,5 +1,7 @@
-use std::{cmp::Ordering, collections::HashMap};
 use geo::{Coord, Polygon};
+use itertools::Itertools;
+use serde::{Deserialize, Serialize};
+use std::{cmp::Ordering, collections::HashMap};
 
 /// An agent is a named entity that can execute actions
 #[derive(Clone)]
@@ -47,6 +49,33 @@ impl Path {
             Some(s) => s.start,
             None => self.action.target
         }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PointST {
+    pub x: f64,
+    pub y: f64,
+    pub t: f64
+}
+
+impl Path {
+    pub fn to_points_st(&self) -> Vec<PointST> {
+        let mut result = match self.moves.first() {
+            Some(s) => vec![PointST {x: s.start.x, y: s.start.y, t: self.t_start} ],
+            None => vec![]
+        };
+        let mut clock = self.t_start;
+        for s in self.moves.iter() {
+            clock = clock + s.duration;
+            result.push(PointST {x: s.end.x, y: s.end.y, t: clock})
+        }
+        result.push(PointST {
+            x: self.action.target.x, 
+            y: self.action.target.y, 
+            t: clock + self.action.duration
+        });
+        result
     }
 }
 
@@ -137,27 +166,20 @@ fn idle_path(action: &Action, path_2d: &Vec<Segment>, r: &Vec<(Agent, Vec<Path>)
         .map(|(a, ps)| (a, ps.iter().skip_while(|p| p.t_end < t0)))
         .map(|(a, ps)| (
             a, ps
-                .flat_map(|p| {
-                    let mut acc = vec![(p.t_start, p.start())];
-                    for m in p.moves.iter() {
-                        acc.push((acc.last().unwrap().0 + m.duration, m.end));
-                    }
-                    acc
-                }).collect::<Vec<(f64, Coord)>>()
-                .windows(2)
-                .map(|l| (l[0], l[1]))
+                .flat_map(|p| p.to_points_st())
+                .tuple_windows()
                 .filter(|(p1, _)| if a.order < action.agent.order { 
-                        xf - p1.1.x < sd
+                        xf - p1.x < sd
                     } else { 
-                        p1.1.x - xf < sd 
+                        p1.x - xf < sd 
                 })
                 .last()
         ))
         .filter(|(_, t)| t.is_some())
         .map(|(a, t)| (a, t.unwrap()))
         .map(|(a, (p1, _))| {
-            let t1 = p1.0 - (f64::abs(p1.1.x - xi) - sd) / action.agent.velocity.x;
-            let t2 = p1.0 + (sd - f64::abs(p1.1.x - xf) - sd) / a.velocity.x - duration; 
+            let t1 = p1.t - (f64::abs(p1.x - xi) - sd) / action.agent.velocity.x;
+            let t2 = p1.t + (sd - f64::abs(p1.x - xf) - sd) / a.velocity.x - duration; 
             t1.max(t2)
         })
         .reduce(f64::max)
@@ -191,10 +213,9 @@ fn evasion_target(conflict: &Conflict) -> Action {
 fn first_conflict<'a>(
     agent: &'a Agent, path: &'a Vec<Segment>, r: &'a Vec<(Agent, Vec<Path>)>
 ) -> Option<Conflict<'a>> {
-    let float_cmp = |f1: &&f64, f2: &&f64| f1.partial_cmp(f2).unwrap();
     let xs = path.iter().map(|s| s.end.x).collect::<Vec<f64>>();
-    let min_x = *xs.iter().min_by(float_cmp).unwrap();
-    let max_x = *xs.iter().max_by(float_cmp).unwrap();
+    let min_x = xs.clone().into_iter().reduce(f64::min).unwrap();
+    let max_x = xs.into_iter().reduce(f64::max).unwrap();
     let result = r.iter()
         .filter(|(a, _)| a.name != agent.name)
         .map(|(_, paths)| &paths.iter().last().unwrap().action)
