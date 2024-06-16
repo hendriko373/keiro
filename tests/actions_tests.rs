@@ -1,6 +1,7 @@
 use geo::Coord;
 use itertools::Itertools;
 use keiro::actions::{self, run, Action, Agent, Path, Schedule};
+use serde::{Deserialize, Serialize};
 
 
 #[test]
@@ -64,10 +65,13 @@ fn test_solver() {
 
     // assert
     let agent_paths = actual.routes.iter()
-        .map(|(n, paths)| (agents.iter().find(|a| a.name == *n).unwrap(), paths.iter()))
         .sorted_by_key(|(a, _)| a.order)
-        .map(|(n, paths)| (n, paths.flat_map(path_to_spacetime).collect::<Vec<PointST>>()))
+        .map(|(n, paths)| (n, paths.iter().flat_map(path_to_spacetime).collect::<Vec<PointST>>()))
         .collect::<Vec<(&Agent, Vec<PointST>)>>();
+
+    let ser_paths = agent_paths.iter().map(|(_, paths)| paths).collect::<Vec<&Vec<PointST>>>();
+    let str = serde_yaml::to_string(&ser_paths).unwrap();
+    let _ = std::fs::write("/home/hendrik/log/paths.yml", str);
 
     // safety distances
     for (t1, t2) in agent_paths.iter().tuple_windows() {
@@ -75,20 +79,22 @@ fn test_solver() {
             let (a2, p2) = t2;
             let sd = f64::max(a1.safety_x, a2.safety_x);
 
-            all_first_points_outside_sd(p1, a2, p2, sd);
-            all_first_points_outside_sd(p2, a1, p1, sd);
+            all_first_points_outside_sd(a1, p1, a2, p2, sd);
+            all_first_points_outside_sd(a2, p2, a1, p1, sd);
     }
-
-    let a = 1;
-    let b = a + 1;
 
 }
 
-fn all_first_points_outside_sd(p1: &Vec<PointST>, a2: &&Agent, p2: &Vec<PointST>, sd: f64) -> () {
+fn all_first_points_outside_sd(
+    a1: &&Agent, p1: &Vec<PointST>, a2: &&Agent, p2: &Vec<PointST>, sd: f64) -> () {
     for p in p1.iter() {
         let c = interpolate(p, *a2, p2);
         if c.is_some() {
-            let cond = f64::abs(p.x - c.unwrap().x) >= sd;
+            let cond = if a1.order < a2.order {
+                c.unwrap().x - p.x >= sd
+            } else {
+                p.x - c.unwrap().x >= sd
+            };
             if !cond {
                 let _a = 1;
                 println!("Point {}, {}, {}", p.x, p.t, c.unwrap().x);
@@ -113,7 +119,7 @@ fn interpolate(p: &PointST, a: &Agent, pts: &[PointST]) -> Option<Coord> {
         })
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 struct PointST {
     x: f64,
     y: f64,
@@ -137,3 +143,4 @@ fn path_to_spacetime(path: &Path) -> Vec<PointST> {
     });
     result
 }
+

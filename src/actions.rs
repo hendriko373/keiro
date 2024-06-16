@@ -62,15 +62,15 @@ struct Conflict<'a> {
 
 pub struct Routing {
     /// The list of paths for each agent.
-    pub routes: HashMap<String, Vec<Path>>
+    pub routes: Vec<(Agent, Vec<Path>)>
 }
 
 /// Compute routes for each agent, given a schedule of concrete actions
 pub fn run(agents: &Vec<Agent>, sched: Schedule) -> Routing {
 
-    let init: HashMap<String, Vec<Path>> 
+    let init: Vec<(Agent, Vec<Path>)> 
         = agents.iter().map(|a| (
-            a.name.clone(), 
+            a.clone(), 
             vec![Path {
                 moves: vec![], 
                 action: Action {agent: a.clone(), target: a.position, duration: 0.0 },
@@ -89,11 +89,12 @@ pub fn run(agents: &Vec<Agent>, sched: Schedule) -> Routing {
 }
 
 fn execute_action(
-    action: &Action, r: HashMap<String, Vec<Path>>
-) -> HashMap<String, Vec<Path>> {
+    action: &Action, r: Vec<(Agent, Vec<Path>)>
+) -> Vec<(Agent, Vec<Path>)> {
+    let agent_paths = get_paths(&action.agent, &r);
     let path_2d = find_path_2d(
         action, 
-        r[&action.agent.name].iter().last().unwrap().action.target.clone()
+        agent_paths.iter().last().unwrap().action.target.clone()
     );
 
     let mut result = r.clone();
@@ -108,46 +109,55 @@ fn execute_action(
         t_start: idle.t_end,
         t_end: idle.t_end + path_2d[0].duration + action.duration
     };
-    let mut v = result[&action.agent.name].clone();
+    let mut v = get_paths(&action.agent, &result).clone();
     if idle.t_end != idle.t_start {
         v.push(idle);
     }
     v.push(path);
-    result.insert(action.agent.name.clone(), v);
+    let i = r.iter().position(|(a, _)| a.name == action.agent.name).unwrap();
+    result[i] = (action.agent.clone(), v);
     result
 }
 
-fn idle_path(action: &Action, path_2d: &Vec<Segment>, r: &HashMap<String, Vec<Path>>) -> Path {
-    let last_path = r[&action.agent.name].last().unwrap();
+fn get_paths<'a, 'b>(agent: &'a Agent, r: &'b Vec<(Agent, Vec<Path>)>) -> &'b Vec<Path> {
+    let (_, last_path) = r.iter().find(|(a, _)| a.name == agent.name).unwrap();
+    last_path
+}
+
+fn idle_path(action: &Action, path_2d: &Vec<Segment>, r: &Vec<(Agent, Vec<Path>)>) -> Path {
+    let last_path = get_paths(&action.agent, r).last().unwrap();
     let t0 = last_path.t_end;
     let duration = path_2d[0].duration;
     let xi = path_2d[0].start.x;
     let xf = path_2d[0].end.x;
     let sd = action.agent.safety_x;
     let s = r.iter()
-        .filter(|(n, _)| n != &&action.agent.name)
+        .filter(|(a, _)| a.name != action.agent.name)
         .filter(|(_, ps)| ps.iter().any(|p| p.t_end >= t0))
-        .map(|(_, ps)| ps.iter().skip_while(|p| p.t_end < t0))
-        .map(|ps| ps
-            .flat_map(|p| {
-                let mut acc = vec![(p.t_start, p.start())];
-                for m in p.moves.iter() {
-                    acc.push((acc.last().unwrap().0 + m.duration, m.end));
-                }
-                acc
-            })
-            .collect::<Vec<(f64, Coord)>>()
-            .windows(2)
-            .map(|l| (l[0], l[1]))
-            .filter(|(p1, _)| f64::abs(p1.1.x - xf) < sd)
-            .last()
-        )
-        .filter(|t| t.is_some())
-        .map(|t| t.unwrap())
-        .map(|(p1, _)| {
+        .map(|(a, ps)| (a, ps.iter().skip_while(|p| p.t_end < t0)))
+        .map(|(a, ps)| (
+            a, ps
+                .flat_map(|p| {
+                    let mut acc = vec![(p.t_start, p.start())];
+                    for m in p.moves.iter() {
+                        acc.push((acc.last().unwrap().0 + m.duration, m.end));
+                    }
+                    acc
+                }).collect::<Vec<(f64, Coord)>>()
+                .windows(2)
+                .map(|l| (l[0], l[1]))
+                .filter(|(p1, _)| if a.order < action.agent.order { 
+                        xf - p1.1.x < sd
+                    } else { 
+                        p1.1.x - xf < sd 
+                })
+                .last()
+        ))
+        .filter(|(_, t)| t.is_some())
+        .map(|(a, t)| (a, t.unwrap()))
+        .map(|(a, (p1, _))| {
             let t1 = p1.0 - (f64::abs(p1.1.x - xi) - sd) / action.agent.velocity.x;
-            let t2 = p1.0 + (sd - f64::abs(p1.1.x - xf) - sd) / action.agent.velocity.x - duration; 
-                // should be velocity of other agent
+            let t2 = p1.0 + (sd - f64::abs(p1.1.x - xf) - sd) / a.velocity.x - duration; 
             t1.max(t2)
         })
         .reduce(f64::max)
@@ -179,14 +189,14 @@ fn evasion_target(conflict: &Conflict) -> Action {
 }
 
 fn first_conflict<'a>(
-    agent: &'a Agent, path: &'a Vec<Segment>, r: &'a HashMap<String, Vec<Path>>
+    agent: &'a Agent, path: &'a Vec<Segment>, r: &'a Vec<(Agent, Vec<Path>)>
 ) -> Option<Conflict<'a>> {
     let float_cmp = |f1: &&f64, f2: &&f64| f1.partial_cmp(f2).unwrap();
     let xs = path.iter().map(|s| s.end.x).collect::<Vec<f64>>();
     let min_x = *xs.iter().min_by(float_cmp).unwrap();
     let max_x = *xs.iter().max_by(float_cmp).unwrap();
     let result = r.iter()
-        .filter(|(n, _)| n != &&agent.name)
+        .filter(|(a, _)| a.name != agent.name)
         .map(|(_, paths)| &paths.iter().last().unwrap().action)
         .map(|a| (
             a, 
