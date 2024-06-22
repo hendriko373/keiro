@@ -1,16 +1,24 @@
-use geo::{Coord, Polygon};
+use geo::{Coord, CoordNum, Polygon};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, collections::HashMap};
 
 /// An agent is a named entity that can execute actions
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Agent {
     pub name: String,
+    #[serde(with = "CoordSerde")]
     pub position: Coord,
-    pub velocity: Coord,
+    pub velocity: ConstVel2D,
     pub safety_x: f64,
     pub order: i64
+}
+
+/// Motion of constant velocity in two dimensions.
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct ConstVel2D {
+    pub x: f64,
+    pub y: f64
 }
 
 /// An action is an event that is executed by an agent at a given location.
@@ -27,7 +35,7 @@ pub struct Schedule {
     pub actions: Vec<Action>
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Segment {
     pub start: Coord,
     pub end: Coord,
@@ -43,20 +51,20 @@ pub struct Path {
     pub t_end: f64
 }
 
-impl Path {
-    fn start(&self) -> Coord {
-        match self.moves.iter().next() {
-            Some(s) => s.start,
-            None => self.action.target
-        }
-    }
-}
-
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PointST {
     pub x: f64,
     pub y: f64,
     pub t: f64
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "Coord")]
+struct CoordSerde<T = f64>
+where T: CoordNum
+{
+    x: T,
+    y: T
 }
 
 impl Path {
@@ -179,7 +187,7 @@ fn idle_path(action: &Action, path_2d: &Vec<Segment>, r: &Vec<(Agent, Vec<Path>)
         .map(|(a, t)| (a, t.unwrap()))
         .map(|(a, (p1, _))| {
             let t1 = p1.t - (f64::abs(p1.x - xi) - sd) / action.agent.velocity.x;
-            let t2 = p1.t + (sd - f64::abs(p1.x - xf) - sd) / a.velocity.x - duration; 
+            let t2 = p1.t + (sd - f64::abs(p1.x - xf)) / a.velocity.x - duration; 
             t1.max(t2)
         })
         .reduce(f64::max)

@@ -1,6 +1,6 @@
 use geo::Coord;
 use itertools::Itertools;
-use keiro::actions::{PointST, run, Action, Agent, Schedule};
+use keiro::actions::{ConstVel2D, PointST, run, Action, Agent, Schedule};
 
 
 #[test]
@@ -9,21 +9,21 @@ fn test_solver() {
     let agent1 = Agent {
         name: String::from("agent1"), 
         position: Coord {x: 10.0, y: 10.0 },
-        velocity: Coord {x: 2.0, y: 1.0}, 
+        velocity: ConstVel2D {x: 2.0, y: 1.0}, 
         safety_x: 10.0, 
         order: 0
     };
     let agent2 = Agent {
         name: String::from("agent2"), 
         position: Coord {x: 30.0, y: 10.0 },
-        velocity: Coord {x: 2.0, y: 1.0}, 
+        velocity: ConstVel2D {x: 2.0, y: 1.0}, 
         safety_x: 10.0, 
         order: 1
     };
     let agent3 = Agent {
         name: String::from("agent3"), 
         position: Coord {x: 50.0, y: 10.0 },
-        velocity: Coord {x: 2.0, y: 1.0}, 
+        velocity: ConstVel2D {x: 2.0, y: 1.0}, 
         safety_x: 10.0, 
         order: 2
     };
@@ -68,7 +68,7 @@ fn test_solver() {
         .map(|(n, paths)| (n, paths.iter().flat_map(|p| p.to_points_st()).collect::<Vec<PointST>>()))
         .collect::<Vec<(&Agent, Vec<PointST>)>>();
 
-    let ser_paths = agent_paths.iter().map(|(_, paths)| paths).collect::<Vec<&Vec<PointST>>>();
+    let ser_paths = agent_paths.clone();
     let str = serde_yaml::to_string(&ser_paths).unwrap();
     let _ = std::fs::write("/home/hendrik/log/paths.yml", str);
 
