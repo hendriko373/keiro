@@ -1,28 +1,29 @@
 use geo::{Coord, CoordNum, Polygon};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::{cmp::Ordering, collections::HashMap};
+use std::{cmp::Ordering, collections::{HashMap, HashSet}};
 
 /// An agent is a named entity that can execute actions
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Agent {
     pub name: String,
     #[serde(with = "CoordSerde")]
-    pub position: Coord,
+    pub position: Coord<f64>,
     pub velocity: ConstVel2D,
     pub safety_x: f64,
     pub order: i64
 }
 
 /// Motion of constant velocity in two dimensions.
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct ConstVel2D {
+
     pub x: f64,
     pub y: f64
 }
 
 /// An action is an event that is executed by an agent at a given location.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Action {
     pub agent: Agent,
     pub target: Coord,
@@ -31,6 +32,7 @@ pub struct Action {
 
 /// A schedule is a list of events, determining the absolute order in which
 /// they have to be executed.
+#[derive(Debug)]
 pub struct Schedule {
     pub actions: Vec<Action>
 }
