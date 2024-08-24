@@ -1,7 +1,10 @@
 use geo::{Coord, CoordNum, Polygon};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::{cmp::Ordering, collections::{HashMap, HashSet}};
+use std::{
+    cmp::Ordering,
+    collections::{HashMap, HashSet},
+};
 
 /// An agent is a named entity that can execute actions
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -11,15 +14,14 @@ pub struct Agent {
     pub position: Coord<f64>,
     pub velocity: ConstVel2D,
     pub safety_x: f64,
-    pub order: i64
+    pub order: i64,
 }
 
 /// Motion of constant velocity in two dimensions.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct ConstVel2D {
-
     pub x: f64,
-    pub y: f64
+    pub y: f64,
 }
 
 /// An action is an event that is executed by an agent at a given location.
@@ -34,14 +36,14 @@ pub struct Action {
 /// they have to be executed.
 #[derive(Debug)]
 pub struct Schedule {
-    pub actions: Vec<Action>
+    pub actions: Vec<Action>,
 }
 
 #[derive(Clone, Copy)]
 pub struct Segment {
     pub start: Coord,
     pub end: Coord,
-    pub duration: f64
+    pub duration: f64,
 }
 
 /// A path is a list of moves necessary to arrive at the given action.
@@ -49,7 +51,7 @@ pub struct Segment {
 pub struct Path {
     /// A list of moves that take the agent from the previous action to the `action`
     pub moves: Vec<Segment>,
-    
+
     /// The action to be done after the agent arives at its location
     pub action: Action,
 
@@ -57,40 +59,49 @@ pub struct Path {
     pub t_start: f64,
 
     /// The end time of the path, which is after the present action is finished
-    pub t_end: f64
+    pub t_end: f64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PointST {
     pub x: f64,
     pub y: f64,
-    pub t: f64
+    pub t: f64,
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "Coord")]
 struct CoordSerde<T = f64>
-where T: CoordNum
+where
+    T: CoordNum,
 {
     x: T,
-    y: T
+    y: T,
 }
 
 impl Path {
     pub fn to_points_st(&self) -> Vec<PointST> {
         let mut result = match self.moves.first() {
-            Some(s) => vec![PointST {x: s.start.x, y: s.start.y, t: self.t_start} ],
-            None => vec![]
+            Some(s) => vec![PointST {
+                x: s.start.x,
+                y: s.start.y,
+                t: self.t_start,
+            }],
+            None => vec![],
         };
         let mut clock = self.t_start;
         for s in self.moves.iter() {
             clock = clock + s.duration;
-            result.push(PointST {x: s.end.x, y: s.end.y, t: clock})
+            result.push(PointST {
+                x: s.end.x,
+                y: s.end.y,
+                t: clock,
+            })
         }
         result.push(PointST {
-            x: self.action.target.x, 
-            y: self.action.target.y, 
-            t: clock + self.action.duration
+            x: self.action.target.x,
+            y: self.action.target.y,
+            t: clock + self.action.duration,
         });
         result
     }
@@ -98,49 +109,52 @@ impl Path {
 
 enum ConflictResolution {
     LeftOf(f64),
-    RightOf(f64)
+    RightOf(f64),
 }
 
 struct Conflict<'a> {
     cause: &'a Action,
-    resolution: ConflictResolution
+    resolution: ConflictResolution,
 }
 
 pub struct Routing {
     /// The list of paths for each agent.
-    pub routes: Vec<(Agent, Vec<Path>)>
+    pub routes: Vec<(Agent, Vec<Path>)>,
 }
 
-/// Compute routes for each agent, given a schedule of concrete actions
+/// Compute routes for each agent, given a schedule of actions
 pub fn routes(agents: &Vec<Agent>, sched: Schedule) -> Routing {
+    let init: Vec<(Agent, Vec<Path>)> = agents
+        .iter()
+        .map(|a| {
+            (
+                a.clone(),
+                vec![Path {
+                    moves: vec![],
+                    action: Action {
+                        agent: a.clone(),
+                        target: a.position,
+                        duration: 0.0,
+                    },
+                    t_start: 0.0,
+                    t_end: 0.0,
+                }],
+            )
+        })
+        .collect();
+    let r = sched
+        .actions
+        .iter()
+        .fold(init, |acc, a| execute_action(a, acc));
 
-    let init: Vec<(Agent, Vec<Path>)> 
-        = agents.iter().map(|a| (
-            a.clone(), 
-            vec![Path {
-                moves: vec![], 
-                action: Action {agent: a.clone(), target: a.position, duration: 0.0 },
-                t_start: 0.0, 
-                t_end: 0.0
-            }]
-        )).collect();
-    let r = sched.actions.iter().fold(
-        init,
-        |acc, a| execute_action(a, acc)
-    );
-
-    Routing {
-        routes: r
-    }
+    Routing { routes: r }
 }
 
-fn execute_action(
-    action: &Action, r: Vec<(Agent, Vec<Path>)>
-) -> Vec<(Agent, Vec<Path>)> {
+fn execute_action(action: &Action, r: Vec<(Agent, Vec<Path>)>) -> Vec<(Agent, Vec<Path>)> {
     let agent_paths = get_paths(&action.agent, &r);
     let path_2d = find_path_2d(
-        action, 
-        agent_paths.iter().last().unwrap().action.target.clone()
+        action,
+        agent_paths.iter().last().unwrap().action.target.clone(),
     );
 
     let mut result = r.clone();
@@ -153,14 +167,17 @@ fn execute_action(
         moves: path_2d.clone(),
         action: action.clone(),
         t_start: idle.t_end,
-        t_end: idle.t_end + path_2d[0].duration + action.duration
+        t_end: idle.t_end + path_2d[0].duration + action.duration,
     };
     let mut v = get_paths(&action.agent, &result).clone();
     if idle.t_end != idle.t_start {
         v.push(idle);
     }
     v.push(path);
-    let i = r.iter().position(|(a, _)| a.name == action.agent.name).unwrap();
+    let i = r
+        .iter()
+        .position(|(a, _)| a.name == action.agent.name)
+        .unwrap();
     result[i] = (action.agent.clone(), v);
     result
 }
@@ -177,26 +194,31 @@ fn idle_path(action: &Action, path_2d: &Vec<Segment>, r: &Vec<(Agent, Vec<Path>)
     let xi = path_2d[0].start.x;
     let xf = path_2d[0].end.x;
     let sd = action.agent.safety_x;
-    let s = r.iter()
+    let s = r
+        .iter()
         .filter(|(a, _)| a.name != action.agent.name)
         .filter(|(_, ps)| ps.iter().any(|p| p.t_end >= t0))
         .map(|(a, ps)| (a, ps.iter().skip_while(|p| p.t_end < t0)))
-        .map(|(a, ps)| (
-            a, ps
-                .flat_map(|p| p.to_points_st())
-                .tuple_windows()
-                .filter(|(p1, _)| if a.order < action.agent.order { 
-                        xf - p1.x < sd
-                    } else { 
-                        p1.x - xf < sd 
-                })
-                .last()
-        ))
+        .map(|(a, ps)| {
+            (
+                a,
+                ps.flat_map(|p| p.to_points_st())
+                    .tuple_windows()
+                    .filter(|(p1, _)| {
+                        if a.order < action.agent.order {
+                            xf - p1.x < sd
+                        } else {
+                            p1.x - xf < sd
+                        }
+                    })
+                    .last(),
+            )
+        })
         .filter(|(_, t)| t.is_some())
         .map(|(a, t)| (a, t.unwrap()))
         .map(|(a, (p1, _))| {
             let t1 = p1.t - (f64::abs(p1.x - xi) - sd) / action.agent.velocity.x;
-            let t2 = p1.t + (sd - f64::abs(p1.x - xf)) / a.velocity.x - duration; 
+            let t2 = p1.t + (sd - f64::abs(p1.x - xf)) / a.velocity.x - duration;
             t1.max(t2)
         })
         .reduce(f64::max)
@@ -204,7 +226,7 @@ fn idle_path(action: &Action, path_2d: &Vec<Segment>, r: &Vec<(Agent, Vec<Path>)
         .ceil();
     let ss = f64::max(s, t0);
 
-    Path{
+    Path {
         moves: Vec::new(),
         action: Action {
             agent: action.agent.clone(),
@@ -212,54 +234,77 @@ fn idle_path(action: &Action, path_2d: &Vec<Segment>, r: &Vec<(Agent, Vec<Path>)
             duration: ss - t0,
         },
         t_start: t0,
-        t_end: ss
+        t_end: ss,
     }
 }
 
 fn evasion_target(conflict: &Conflict) -> Action {
     let target_x = match conflict.resolution {
         ConflictResolution::LeftOf(l) => l,
-        ConflictResolution::RightOf(l) => l
+        ConflictResolution::RightOf(l) => l,
     };
     Action {
         agent: conflict.cause.agent.clone(),
-        target: Coord { x: target_x, y: conflict.cause.target.y },
+        target: Coord {
+            x: target_x,
+            y: conflict.cause.target.y,
+        },
         duration: 0.0,
     }
 }
 
 fn first_conflict<'a>(
-    agent: &'a Agent, path: &'a Vec<Segment>, r: &'a Vec<(Agent, Vec<Path>)>
+    agent: &'a Agent,
+    path: &'a Vec<Segment>,
+    r: &'a Vec<(Agent, Vec<Path>)>,
 ) -> Option<Conflict<'a>> {
     let xs = path.iter().map(|s| s.end.x).collect::<Vec<f64>>();
     let min_x = xs.clone().into_iter().reduce(f64::min).unwrap();
     let max_x = xs.into_iter().reduce(f64::max).unwrap();
-    let result = r.iter()
+    let result = r
+        .iter()
         .filter(|(a, _)| a.name != agent.name)
         .map(|(_, paths)| &paths.iter().last().unwrap().action)
-        .map(|a| (
-            a, 
-            if a.agent.order < agent.order && a.target.x > min_x - a.agent.safety_x { 
-                Some(ConflictResolution::LeftOf(min_x - a.agent.safety_x))
-            } else if a.agent.order > agent.order && a.target.x < max_x + a.agent.safety_x{ 
-                Some(ConflictResolution::RightOf(max_x + a.agent.safety_x))
-            } else {
-                None
-            }))
-        .filter(|(_, c)| c.is_some())
-        .map(|(a, c)| Conflict { cause: a, resolution: c.unwrap() })
-        .min_by(|c1, c2| {
-            match c1.resolution {
-                ConflictResolution::LeftOf(l1) => match c2.resolution {
-                    ConflictResolution::LeftOf(l2) => if l1 > l2 { Ordering::Less } else { Ordering:: Greater },
-                    ConflictResolution::RightOf(_) => Ordering::Less
+        .map(|a| {
+            (
+                a,
+                if a.agent.order < agent.order && a.target.x > min_x - a.agent.safety_x {
+                    Some(ConflictResolution::LeftOf(min_x - a.agent.safety_x))
+                } else if a.agent.order > agent.order && a.target.x < max_x + a.agent.safety_x {
+                    Some(ConflictResolution::RightOf(max_x + a.agent.safety_x))
+                } else {
+                    None
                 },
-                ConflictResolution::RightOf(l1) => match c2.resolution {
-                    ConflictResolution::RightOf(l2) => if l1 < l2 { Ordering::Less } else { Ordering:: Greater },
-                    ConflictResolution::LeftOf(_) => Ordering::Greater
+            )
+        })
+        .filter(|(_, c)| c.is_some())
+        .map(|(a, c)| Conflict {
+            cause: a,
+            resolution: c.unwrap(),
+        })
+        .min_by(|c1, c2| match c1.resolution {
+            ConflictResolution::LeftOf(l1) => match c2.resolution {
+                ConflictResolution::LeftOf(l2) => {
+                    if l1 > l2 {
+                        Ordering::Less
+                    } else {
+                        Ordering::Greater
+                    }
                 }
-            }});
-        result
+                ConflictResolution::RightOf(_) => Ordering::Less,
+            },
+            ConflictResolution::RightOf(l1) => match c2.resolution {
+                ConflictResolution::RightOf(l2) => {
+                    if l1 < l2 {
+                        Ordering::Less
+                    } else {
+                        Ordering::Greater
+                    }
+                }
+                ConflictResolution::LeftOf(_) => Ordering::Greater,
+            },
+        });
+    result
 }
 
 fn find_path_2d(a: &Action, p: Coord) -> Vec<Segment> {
@@ -267,5 +312,9 @@ fn find_path_2d(a: &Action, p: Coord) -> Vec<Segment> {
     let t_x = (a.target.x - p.x).abs() / v.x;
     let t_y = (a.target.y - p.y).abs() / v.y;
     let t = t_x.max(t_y);
-    vec![Segment {start: p, end: a.target.clone(), duration: t}]
+    vec![Segment {
+        start: p,
+        end: a.target.clone(),
+        duration: t,
+    }]
 }
