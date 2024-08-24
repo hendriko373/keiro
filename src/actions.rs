@@ -47,9 +47,16 @@ pub struct Segment {
 /// A path is a list of moves necessary to arrive at the given action.
 #[derive(Clone)]
 pub struct Path {
+    /// A list of moves that take the agent from the previous action to the `action`
     pub moves: Vec<Segment>,
+    
+    /// The action to be done after the agent arives at its location
     pub action: Action,
+
+    /// The start time of the path, which equals the end time of the previous path
     pub t_start: f64,
+
+    /// The end time of the path, which is after the present action is finished
     pub t_end: f64
 }
 
@@ -105,7 +112,7 @@ pub struct Routing {
 }
 
 /// Compute routes for each agent, given a schedule of concrete actions
-pub fn run(agents: &Vec<Agent>, sched: Schedule) -> Routing {
+pub fn routes(agents: &Vec<Agent>, sched: Schedule) -> Routing {
 
     let init: Vec<(Agent, Vec<Path>)> 
         = agents.iter().map(|a| (
@@ -195,16 +202,17 @@ fn idle_path(action: &Action, path_2d: &Vec<Segment>, r: &Vec<(Agent, Vec<Path>)
         .reduce(f64::max)
         .unwrap_or(t0)
         .ceil();
+    let ss = f64::max(s, t0);
 
     Path{
         moves: Vec::new(),
         action: Action {
             agent: action.agent.clone(),
             target: last_path.action.target,
-            duration: s - t0,
+            duration: ss - t0,
         },
         t_start: t0,
-        t_end: s
+        t_end: ss
     }
 }
 

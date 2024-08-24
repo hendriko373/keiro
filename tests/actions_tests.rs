@@ -1,6 +1,6 @@
 use geo::Coord;
 use itertools::Itertools;
-use keiro::actions::{ConstVel2D, PointST, run, Action, Agent, Schedule};
+use keiro::actions::{ConstVel2D, PointST, routes, Action, Agent, Schedule};
 use proptest::prelude::*;
 
 
@@ -61,7 +61,7 @@ fn test_solver() {
     let agents = vec![agent1, agent2, agent3];
 
     // run
-    let actual = run(&agents, schedule);
+    let actual = routes(&agents, schedule);
 
     // assert
     let agent_paths = actual.routes.iter()
@@ -132,7 +132,7 @@ proptest! {
     #[test]
     fn test_safety_distances((agents, schedule) in arb_schedule()) {
         // run
-        let actual = run(&agents, schedule);
+        let actual = routes(&agents, schedule);
 
         // assert
         let agent_paths = actual.routes.iter()
