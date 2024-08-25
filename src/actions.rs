@@ -52,7 +52,7 @@ pub struct Path {
     /// A list of moves that take the agent from the previous action to the `action`
     pub moves: Vec<Segment>,
 
-    /// The action to be done after the agent arives at its location
+    /// The action to be done
     pub action: Action,
 
     /// The start time of the path, which equals the end time of the previous path
@@ -107,13 +107,23 @@ impl Path {
     }
 }
 
+/// Indicator on how a conflict is resolved
 enum ConflictResolution {
-    LeftOf(f64),
-    RightOf(f64),
+    /// The conflict is resolved by an x-pos lower than the value
+    LowerThanX(f64),
+
+    /// The conflict is resolved by an x-pos higher than the value
+    HigherThanX(f64),
 }
 
+/// A conflict is caused by an agent, being at the position of its latest
+/// action, and hindering the action now to be done by some other agent.
 struct Conflict<'a> {
+    /// The causing action of the conflict. The correspondig agent must move
+    /// to resolve the conflict.
     cause: &'a Action,
+
+    /// The resolution for the conflict.
     resolution: ConflictResolution,
 }
 
@@ -150,6 +160,8 @@ pub fn routes(agents: &Vec<Agent>, sched: Schedule) -> Routing {
     Routing { routes: r }
 }
 
+/// Execute an action, i.e., find a path for the agent to arrive at the action
+/// target and resolve any existing conflicts.
 fn execute_action(action: &Action, r: Vec<(Agent, Vec<Path>)>) -> Vec<(Agent, Vec<Path>)> {
     let agent_paths = get_paths(&action.agent, &r);
     let path_2d = find_path_2d(
@@ -157,10 +169,10 @@ fn execute_action(action: &Action, r: Vec<(Agent, Vec<Path>)>) -> Vec<(Agent, Ve
         agent_paths.iter().last().unwrap().action.target.clone(),
     );
 
-    let mut result = r.clone();
+    let mut result = r;
     while let Some(conflict) = first_conflict(&action.agent, &path_2d, &result) {
         let ev_action = evasion_target(&conflict);
-        result = execute_action(&ev_action, result.clone());
+        result = execute_action(&ev_action, result);
     }
     let idle = idle_path(action, &path_2d, &result);
     let path = Path {
@@ -174,7 +186,7 @@ fn execute_action(action: &Action, r: Vec<(Agent, Vec<Path>)>) -> Vec<(Agent, Ve
         v.push(idle);
     }
     v.push(path);
-    let i = r
+    let i = result
         .iter()
         .position(|(a, _)| a.name == action.agent.name)
         .unwrap();
@@ -240,8 +252,8 @@ fn idle_path(action: &Action, path_2d: &Vec<Segment>, r: &Vec<(Agent, Vec<Path>)
 
 fn evasion_target(conflict: &Conflict) -> Action {
     let target_x = match conflict.resolution {
-        ConflictResolution::LeftOf(l) => l,
-        ConflictResolution::RightOf(l) => l,
+        ConflictResolution::LowerThanX(l) => l,
+        ConflictResolution::HigherThanX(l) => l,
     };
     Action {
         agent: conflict.cause.agent.clone(),
@@ -253,6 +265,7 @@ fn evasion_target(conflict: &Conflict) -> Action {
     }
 }
 
+/// Return the first conflict to be resolved, if any.
 fn first_conflict<'a>(
     agent: &'a Agent,
     path: &'a Vec<Segment>,
@@ -269,9 +282,9 @@ fn first_conflict<'a>(
             (
                 a,
                 if a.agent.order < agent.order && a.target.x > min_x - a.agent.safety_x {
-                    Some(ConflictResolution::LeftOf(min_x - a.agent.safety_x))
+                    Some(ConflictResolution::LowerThanX(min_x - a.agent.safety_x))
                 } else if a.agent.order > agent.order && a.target.x < max_x + a.agent.safety_x {
-                    Some(ConflictResolution::RightOf(max_x + a.agent.safety_x))
+                    Some(ConflictResolution::HigherThanX(max_x + a.agent.safety_x))
                 } else {
                     None
                 },
@@ -283,25 +296,25 @@ fn first_conflict<'a>(
             resolution: c.unwrap(),
         })
         .min_by(|c1, c2| match c1.resolution {
-            ConflictResolution::LeftOf(l1) => match c2.resolution {
-                ConflictResolution::LeftOf(l2) => {
+            ConflictResolution::LowerThanX(l1) => match c2.resolution {
+                ConflictResolution::LowerThanX(l2) => {
                     if l1 > l2 {
                         Ordering::Less
                     } else {
                         Ordering::Greater
                     }
                 }
-                ConflictResolution::RightOf(_) => Ordering::Less,
+                ConflictResolution::HigherThanX(_) => Ordering::Less,
             },
-            ConflictResolution::RightOf(l1) => match c2.resolution {
-                ConflictResolution::RightOf(l2) => {
+            ConflictResolution::HigherThanX(l1) => match c2.resolution {
+                ConflictResolution::HigherThanX(l2) => {
                     if l1 < l2 {
                         Ordering::Less
                     } else {
                         Ordering::Greater
                     }
                 }
-                ConflictResolution::LeftOf(_) => Ordering::Greater,
+                ConflictResolution::LowerThanX(_) => Ordering::Greater,
             },
         });
     result
