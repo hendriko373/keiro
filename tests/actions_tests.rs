@@ -1,97 +1,7 @@
 use geo::Coord;
 use itertools::Itertools;
-use keiro::actions::{routes, Action, Agent, ConstVel2D, PointST, Schedule};
+use keiro::actions::{routes, Action, ActionType, Agent, ConstVel2D, PointST, Schedule};
 use proptest::prelude::*;
-
-#[test]
-fn test_solver() {
-    let agent1 = Agent {
-        name: String::from("agent1"),
-        position: Coord { x: 10.0, y: 10.0 },
-        velocity: ConstVel2D { x: 2.0, y: 1.0 },
-        safety_x: 10.0,
-        order: 0,
-    };
-    let agent2 = Agent {
-        name: String::from("agent2"),
-        position: Coord { x: 30.0, y: 10.0 },
-        velocity: ConstVel2D { x: 2.0, y: 1.0 },
-        safety_x: 10.0,
-        order: 1,
-    };
-    let agent3 = Agent {
-        name: String::from("agent3"),
-        position: Coord { x: 50.0, y: 10.0 },
-        velocity: ConstVel2D { x: 2.0, y: 1.0 },
-        safety_x: 10.0,
-        order: 2,
-    };
-
-    let schedule = Schedule {
-        actions: vec![
-            Action {
-                agent: agent1.clone(),
-                target: Coord { x: 20.0, y: 20.0 },
-                duration: 6.0,
-            },
-            Action {
-                agent: agent1.clone(),
-                target: Coord { x: 30.0, y: 20.0 },
-                duration: 6.0,
-            },
-            Action {
-                agent: agent2.clone(),
-                target: Coord { x: 20.0, y: 20.0 },
-                duration: 6.0,
-            },
-            Action {
-                agent: agent3.clone(),
-                target: Coord { x: 30.0, y: 20.0 },
-                duration: 6.0,
-            },
-            Action {
-                agent: agent2.clone(),
-                target: Coord { x: 40.0, y: 20.0 },
-                duration: 6.0,
-            },
-        ],
-    };
-    let agents = vec![agent1, agent2, agent3];
-
-    // run
-    let actual = routes(&agents, schedule);
-
-    // assert
-    let agent_paths = actual
-        .routes
-        .iter()
-        .sorted_by_key(|(a, _)| a.order)
-        .map(|(n, paths)| {
-            (
-                n,
-                paths
-                    .iter()
-                    .flat_map(|p| p.to_points_st())
-                    .collect::<Vec<PointST>>(),
-            )
-        })
-        .collect::<Vec<(&Agent, Vec<PointST>)>>();
-
-    // serialize for plots
-    let ser_paths = agent_paths.clone();
-    let str = serde_yaml::to_string(&ser_paths).unwrap();
-    let _ = std::fs::write("/home/hendrik/log/paths.yml", str);
-
-    // safety distances
-    for (t1, t2) in agent_paths.iter().tuple_windows() {
-        let (a1, p1) = t1;
-        let (a2, p2) = t2;
-        let sd = f64::max(a1.safety_x, a2.safety_x);
-
-        all_first_points_outside_sd(a1, p1, a2, p2, sd);
-        all_first_points_outside_sd(a2, p2, a1, p1, sd);
-    }
-}
 
 fn arb_action(agents: Vec<Agent>) -> impl Strategy<Value = Action> {
     (0..agents.len(), 0..90, 0..50, 1..20).prop_map(move |(i, x, y, d)| {
@@ -103,6 +13,7 @@ fn arb_action(agents: Vec<Agent>) -> impl Strategy<Value = Action> {
                 y: f64::from(y),
             },
             duration: f64::from(d),
+            r#type: ActionType::Scheduled,
         }
     })
 }
@@ -146,8 +57,8 @@ proptest! {
         // assert
         let agent_paths = actual.routes.iter()
             .sorted_by_key(|(a, _)| a.order)
-            .map(|(n, paths)| (n, paths.iter().flat_map(|p| p.to_points_st()).collect::<Vec<PointST>>()))
-            .collect::<Vec<(&Agent, Vec<PointST>)>>();
+            .map(|(n, paths)| (n, paths.iter().map(|p| (p.to_points_st(), p.action.r#type.clone())).collect::<Vec<(Vec<PointST>, ActionType)>>()))
+            .collect::<Vec<(&Agent, Vec<(Vec<PointST>, ActionType)>)>>();
 
         // serialize for plots
         let ser_paths = agent_paths.clone();
@@ -159,9 +70,11 @@ proptest! {
                 let (a1, p1) = t1;
                 let (a2, p2) = t2;
                 let sd = f64::max(a1.safety_x, a2.safety_x);
+                let pts1 = p1.iter().flat_map(|p| p.0.clone()).collect::<Vec<PointST>>();
+                let pts2 = p2.iter().flat_map(|p| p.0.clone()).collect::<Vec<PointST>>();
 
-                all_first_points_outside_sd(a1, p1, a2, p2, sd);
-                all_first_points_outside_sd(a2, p2, a1, p1, sd);
+                all_first_points_outside_sd(a1, &pts1, a2, &pts2, sd);
+                all_first_points_outside_sd(a2, &pts2, a1, &pts1, sd);
         }
     }
 }

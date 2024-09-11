@@ -24,12 +24,20 @@ pub struct ConstVel2D {
     pub y: f64,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum ActionType {
+    Scheduled,
+    Evasive,
+    Idle,
+}
+
 /// An action is an event that is executed by an agent at a given location.
 #[derive(Clone, Debug)]
 pub struct Action {
     pub agent: Agent,
     pub target: Coord,
     pub duration: f64,
+    pub r#type: ActionType,
 }
 
 /// A schedule is a list of events, determining the absolute order in which
@@ -145,6 +153,7 @@ pub fn routes(agents: &Vec<Agent>, sched: Schedule) -> Routing {
                         agent: a.clone(),
                         target: a.position,
                         duration: 0.0,
+                        r#type: ActionType::Idle,
                     },
                     t_start: 0.0,
                     t_end: 0.0,
@@ -244,6 +253,7 @@ fn idle_path(action: &Action, path_2d: &Vec<Segment>, r: &Vec<(Agent, Vec<Path>)
             agent: action.agent.clone(),
             target: last_path.action.target,
             duration: ss - t0,
+            r#type: ActionType::Idle,
         },
         t_start: t0,
         t_end: ss,
@@ -262,6 +272,7 @@ fn evasion_target(conflict: &Conflict) -> Action {
             y: conflict.cause.target.y,
         },
         duration: 0.0,
+        r#type: ActionType::Evasive,
     }
 }
 
