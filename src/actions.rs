@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
     collections::{HashMap, HashSet},
+    fmt::Display,
 };
 
 /// An agent is a named entity that can execute actions
@@ -40,6 +41,12 @@ pub struct Action {
     pub r#type: ActionType,
 }
 
+impl Agent {
+    pub fn safety_x(&self, other: &Agent) -> f64 {
+        f64::max(self.safety_x, other.safety_x)
+    }
+}
+
 /// A schedule is a list of events, determining the absolute order in which
 /// they have to be executed.
 #[derive(Debug)]
@@ -70,7 +77,7 @@ pub struct Path {
     pub t_end: f64,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct PointST {
     pub x: f64,
     pub y: f64,
@@ -214,13 +221,13 @@ fn idle_path(action: &Action, path_2d: &Vec<Segment>, r: &Vec<(Agent, Vec<Path>)
     let duration = path_2d[0].duration;
     let xi = path_2d[0].start.x;
     let xf = path_2d[0].end.x;
-    let sd = action.agent.safety_x;
     let s = r
         .iter()
         .filter(|(a, _)| a.name != action.agent.name)
         .filter(|(_, ps)| ps.iter().any(|p| p.t_end >= t0))
         .map(|(a, ps)| (a, ps.iter().skip_while(|p| p.t_end < t0)))
         .map(|(a, ps)| {
+            let sd = a.safety_x(&action.agent);
             (
                 a,
                 ps.flat_map(|p| p.to_points_st())
@@ -238,6 +245,7 @@ fn idle_path(action: &Action, path_2d: &Vec<Segment>, r: &Vec<(Agent, Vec<Path>)
         .filter(|(_, t)| t.is_some())
         .map(|(a, t)| (a, t.unwrap()))
         .map(|(a, (p1, _))| {
+            let sd = a.safety_x(&action.agent);
             let t1 = p1.t - (f64::abs(p1.x - xi) - sd) / action.agent.velocity.x;
             let t2 = p1.t + (sd - f64::abs(p1.x - xf)) / a.velocity.x - duration;
             t1.max(t2)
@@ -290,12 +298,13 @@ fn first_conflict<'a>(
         .filter(|(a, _)| a.name != agent.name)
         .map(|(_, paths)| &paths.iter().last().unwrap().action)
         .map(|a| {
+            let sd = a.agent.safety_x(&agent);
             (
                 a,
-                if a.agent.order < agent.order && a.target.x > min_x - a.agent.safety_x {
-                    Some(ConflictResolution::LowerThanX(min_x - a.agent.safety_x))
-                } else if a.agent.order > agent.order && a.target.x < max_x + a.agent.safety_x {
-                    Some(ConflictResolution::HigherThanX(max_x + a.agent.safety_x))
+                if a.agent.order < agent.order && a.target.x > min_x - sd {
+                    Some(ConflictResolution::LowerThanX(min_x - sd))
+                } else if a.agent.order > agent.order && a.target.x < max_x + sd {
+                    Some(ConflictResolution::HigherThanX(max_x + sd))
                 } else {
                     None
                 },

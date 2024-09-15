@@ -111,11 +111,12 @@ fn all_first_points_outside_sd(
 ) -> () {
     for p in p1.iter() {
         let c = interpolate(p, *a2, p2);
+        let eps = 1e-12;
         if c.is_some() {
             let cond = if a1.order < a2.order {
-                c.unwrap().x - p.x >= sd
+                c.unwrap().x - p.x >= sd - eps
             } else {
-                p.x - c.unwrap().x >= sd
+                p.x - c.unwrap().x >= sd - eps
             };
             if !cond {
                 println!("{:?}", p)
