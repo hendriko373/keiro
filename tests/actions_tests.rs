@@ -1,51 +1,74 @@
+use core::num;
+
 use geo::Coord;
 use itertools::Itertools;
 use keiro::actions::{routes, Action, ActionType, Agent, ConstVel2D, PointST, Schedule};
 use proptest::prelude::*;
 
-fn arb_action(agents: Vec<Agent>) -> impl Strategy<Value = Action> {
-    (0..agents.len(), 0..90, 0..50, 1..20).prop_map(move |(i, x, y, d)| {
-        let sd = 10.0;
-        Action {
-            agent: agents[i].clone(),
-            target: Coord {
-                x: (sd * i as f64 + f64::from(x)),
-                y: f64::from(y),
-            },
-            duration: f64::from(d),
-            r#type: ActionType::Scheduled,
-        }
+fn arb_action(
+    agents: Vec<Agent>,
+    sds_l: Vec<f64>,
+    sds_r: Vec<f64>,
+) -> impl Strategy<Value = Action> {
+    (0..agents.len(), 0.0..1.0, 0.0..50.0, 1..20).prop_map(move |(i, x, y, d)| Action {
+        agent: agents[i].clone(),
+        target: Coord {
+            x: sds_l[i] + (sds_r[i] - sds_l[i]) * x,
+            y: y,
+        },
+        duration: f64::from(d),
+        r#type: ActionType::Scheduled,
     })
 }
 
 fn arb_schedule() -> impl Strategy<Value = (Vec<Agent>, Schedule)> {
-    let agent1 = Agent {
-        name: String::from("agent1"),
-        position: Coord { x: 10.0, y: 10.0 },
-        velocity: ConstVel2D { x: 2.0, y: 1.0 },
-        safety_x: 10.0,
-        order: 0,
-    };
-    let agent2 = Agent {
-        name: String::from("agent2"),
-        position: Coord { x: 30.0, y: 10.0 },
-        velocity: ConstVel2D { x: 2.0, y: 1.0 },
-        safety_x: 10.0,
-        order: 1,
-    };
-    let agent3 = Agent {
-        name: String::from("agent3"),
-        position: Coord { x: 50.0, y: 10.0 },
-        velocity: ConstVel2D { x: 2.0, y: 1.0 },
-        safety_x: 10.0,
-        order: 2,
-    };
-    let agents = vec![agent1, agent2, agent3];
-    let action_st = arb_action(agents.clone());
-    (
-        Just(agents),
-        proptest::collection::vec(action_st, 100).prop_map(|v| Schedule { actions: v }),
-    )
+    let x_min = 0.0;
+    let x_max = 200.0;
+    let num_agents = 3;
+    let safe_dists = proptest::collection::vec(10.0..20.0, num_agents);
+    let agents_st = safe_dists
+        .prop_map(move |v| {
+            let mut sds_acc_l = vec![x_min];
+            for i in 0..(v.len() - 1) {
+                sds_acc_l.push(sds_acc_l.last().unwrap() + f64::max(v[i], v[i + 1]));
+            }
+
+            let mut v_rev = v.clone();
+            v_rev.reverse();
+            let mut sds_acc_r = vec![x_max];
+            for i in 0..(v_rev.len() - 1) {
+                sds_acc_r.push(sds_acc_r.last().unwrap() - f64::max(v[i], v[i + 1]));
+            }
+            sds_acc_r.reverse();
+
+            let mut agents = vec![];
+            for i in 0..v.len() {
+                agents.push(Agent {
+                    name: format!("agent-{}", i),
+                    position: Coord {
+                        x: sds_acc_l[i],
+                        y: 10.0,
+                    },
+                    velocity: ConstVel2D { x: 2.0, y: 1.0 },
+                    safety_x: v[i],
+                    order: i as i64,
+                });
+            }
+            (agents, sds_acc_l, sds_acc_r)
+        })
+        .boxed();
+
+    let action_st = agents_st
+        .clone()
+        .prop_flat_map(|(ags, sds_l, sds_r)| {
+            (
+                Just(ags.clone()),
+                proptest::collection::vec(arb_action(ags, sds_l, sds_r), 100)
+                    .prop_map(|v| Schedule { actions: v }),
+            )
+        })
+        .boxed();
+    action_st
 }
 
 proptest! {
@@ -94,6 +117,9 @@ fn all_first_points_outside_sd(
             } else {
                 p.x - c.unwrap().x >= sd
             };
+            if !cond {
+                println!("{:?}", p)
+            }
             assert!(cond);
         }
     }
