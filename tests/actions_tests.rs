@@ -1,29 +1,38 @@
-use core::num;
-
-use geo::Coord;
+use geo::{BooleanOps, BoundingRect, Coord, LineString, Polygon};
 use itertools::Itertools;
-use keiro::actions::{routes, Action, ActionType, Agent, ConstVel2D, PointST, Schedule};
+use keiro::actions::{
+    data::{Action, ActionType, Agent, ConstVel2D, PointST, Schedule},
+    routes,
+};
 use proptest::prelude::*;
 
-fn arb_action(
-    agents: Vec<Agent>,
-    sds_l: Vec<f64>,
-    sds_r: Vec<f64>,
-) -> impl Strategy<Value = Action> {
-    (0..agents.len(), 0.0..1.0, 0.0..50.0, 1..20).prop_map(move |(i, x, y, d)| Action {
-        agent: agents[i].clone(),
-        target: Coord {
-            x: sds_l[i] + (sds_r[i] - sds_l[i]) * x,
-            y: y,
-        },
-        duration: f64::from(d),
-        r#type: ActionType::Scheduled,
+fn arb_action(agents: Vec<Agent>) -> impl Strategy<Value = Action> {
+    (0..agents.len(), 0.0..1.0, 0.0..1.0, 1..20).prop_map(move |(i, x, y, d)| {
+        let br = agents[i].reach.bounding_rect().unwrap();
+        Action {
+            agent: agents[i].clone(),
+            target: Coord {
+                x: br.min().x + (br.max().x - br.min().x) * x,
+                y: br.min().y + (br.max().y - br.min().y) * y,
+            },
+            duration: f64::from(d),
+            r#type: ActionType::Scheduled,
+        }
     })
 }
 
 fn arb_schedule() -> impl Strategy<Value = (Vec<Agent>, Schedule)> {
-    let x_min = 0.0;
-    let x_max = 200.0;
+    let (x_min, x_max) = (0.0, 200.0);
+    let (y_min, y_max) = (0.0, 50.0);
+    let yard = Polygon::new(
+        LineString::from(vec![
+            (x_min, y_min),
+            (x_max, y_min),
+            (x_max, y_max),
+            (x_min, y_max),
+        ]),
+        vec![],
+    );
     let num_agents = 3;
     let safe_dists = proptest::collection::vec(10.0..20.0, num_agents);
     let agents_st = safe_dists
@@ -43,6 +52,28 @@ fn arb_schedule() -> impl Strategy<Value = (Vec<Agent>, Schedule)> {
 
             let mut agents = vec![];
             for i in 0..v.len() {
+                let reach = yard
+                    .difference(&Polygon::new(
+                        LineString::from(vec![
+                            (x_min, y_min),
+                            (x_min + sds_acc_l[i], y_min),
+                            (x_min + sds_acc_l[i], y_max),
+                            (x_min, y_max),
+                        ]),
+                        vec![],
+                    ))
+                    .difference(
+                        &Polygon::new(
+                            LineString::from(vec![
+                                (sds_acc_r[i], y_min),
+                                (x_max, y_min),
+                                (x_max, y_max),
+                                (sds_acc_r[i], y_max),
+                            ]),
+                            vec![],
+                        )
+                        .into(),
+                    );
                 agents.push(Agent {
                     name: format!("agent-{}", i),
                     position: Coord {
@@ -52,18 +83,19 @@ fn arb_schedule() -> impl Strategy<Value = (Vec<Agent>, Schedule)> {
                     velocity: ConstVel2D { x: 2.0, y: 1.0 },
                     safety_x: v[i],
                     order: i as i64,
+                    reach: reach.0[0].clone(),
                 });
             }
-            (agents, sds_acc_l, sds_acc_r)
+            agents
         })
         .boxed();
 
     let action_st = agents_st
         .clone()
-        .prop_flat_map(|(ags, sds_l, sds_r)| {
+        .prop_flat_map(|ags| {
             (
                 Just(ags.clone()),
-                proptest::collection::vec(arb_action(ags, sds_l, sds_r), 100)
+                proptest::collection::vec(arb_action(ags), 100)
                     .prop_map(|v| Schedule { actions: v }),
             )
         })
