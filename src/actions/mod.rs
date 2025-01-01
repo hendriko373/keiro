@@ -4,6 +4,7 @@ use itertools::Itertools;
 use std::cmp::Ordering;
 
 pub mod data;
+mod graphs;
 
 impl Path {
     pub fn to_points_st(&self) -> Vec<PointST> {
