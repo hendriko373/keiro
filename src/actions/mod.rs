@@ -1,5 +1,6 @@
 use data::{Action, ActionType, Agent, Path, PointST, Schedule, Segment};
 use geo::Coord;
+use graphs::{all_edges, get_reach_vertices};
 use itertools::Itertools;
 use std::cmp::Ordering;
 
@@ -262,4 +263,11 @@ fn find_path_2d(a: &Action, p: Coord) -> Vec<Segment> {
         end: a.target.clone(),
         duration: t,
     }]
+}
+
+fn _find_path_2d_graph(a: &Action, p: Coord) -> () {
+    let mut vertices = get_reach_vertices(&a.agent.reach);
+    vertices.push(p);
+    vertices.push(a.target.clone());
+    let _edges = all_edges(&vertices, &a.agent.reach);
 }
