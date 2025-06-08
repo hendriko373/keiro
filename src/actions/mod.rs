@@ -91,10 +91,10 @@ pub fn routes(agents: &Vec<Agent>, sched: Schedule) -> Routing {
 /// Execute an action, i.e., find a path for the agent to arrive at the action
 /// target and resolve any existing conflicts.
 fn execute_action(action: &Action, r: Vec<(Agent, Vec<Path>)>) -> Vec<(Agent, Vec<Path>)> {
-    let agent_paths = get_paths(&action.agent, &r);
+    let paths = agent_paths(&action.agent, &r);
     let path_2d = find_path_2d(
         action,
-        agent_paths.iter().last().unwrap().action.target.clone(),
+        paths.iter().last().unwrap().action.target.clone(),
     );
 
     let mut result = r;
@@ -109,7 +109,7 @@ fn execute_action(action: &Action, r: Vec<(Agent, Vec<Path>)>) -> Vec<(Agent, Ve
         t_start: idle.t_end,
         t_end: idle.t_end + path_2d[0].duration + action.duration,
     };
-    let mut v = get_paths(&action.agent, &result).clone();
+    let mut v = agent_paths(&action.agent, &result).clone();
     if idle.t_end != idle.t_start {
         v.push(idle);
     }
@@ -122,13 +122,13 @@ fn execute_action(action: &Action, r: Vec<(Agent, Vec<Path>)>) -> Vec<(Agent, Ve
     result
 }
 
-fn get_paths<'a, 'b>(agent: &'a Agent, r: &'b Vec<(Agent, Vec<Path>)>) -> &'b Vec<Path> {
-    let (_, last_path) = r.iter().find(|(a, _)| a.name == agent.name).unwrap();
-    last_path
+fn agent_paths<'a, 'b>(agent: &'a Agent, r: &'b Vec<(Agent, Vec<Path>)>) -> &'b Vec<Path> {
+    let (_, agent_paths) = r.iter().find(|(a, _)| a.name == agent.name).unwrap();
+    agent_paths
 }
 
 fn idle_path(action: &Action, path_2d: &Vec<Segment>, r: &Vec<(Agent, Vec<Path>)>) -> Path {
-    let last_path = get_paths(&action.agent, r).last().unwrap();
+    let last_path = agent_paths(&action.agent, r).last().unwrap();
     let t0 = last_path.t_end;
     let duration = path_2d[0].duration;
     let xi = path_2d[0].start.x;
@@ -202,7 +202,7 @@ fn first_conflict<'a>(
     path: &'a Vec<Segment>,
     r: &'a Vec<(Agent, Vec<Path>)>,
 ) -> Option<Conflict<'a>> {
-    let xs = path.iter().map(|s| s.end.x).collect::<Vec<f64>>();
+    let xs = path.iter().map(|s| s.end.x).collect::<Vec<_>>();
     let min_x = xs.clone().into_iter().reduce(f64::min).unwrap();
     let max_x = xs.into_iter().reduce(f64::max).unwrap();
     let result = r

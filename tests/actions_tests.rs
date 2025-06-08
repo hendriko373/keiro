@@ -72,7 +72,6 @@ fn arb_schedule() -> impl Strategy<Value = (Vec<Agent>, Schedule)> {
                             ]),
                             vec![],
                         )
-                        .into(),
                     );
                 agents.push(Agent {
                     name: format!("agent-{}", i),

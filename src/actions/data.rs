@@ -92,7 +92,7 @@ pub struct Path {
     pub t_end: f64,
 }
 
-/// A point in space-time
+/// A point in 3D space-time
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct PointST {
     /// The x-coordinate of the point
