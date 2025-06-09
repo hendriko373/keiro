@@ -3,6 +3,8 @@ use geo::Coord;
 use itertools::Itertools;
 use std::cmp::Ordering;
 
+use crate::actions::graphs::create_graph;
+
 pub mod data;
 mod graphs;
 
@@ -263,3 +265,4 @@ fn find_path_2d(a: &Action, p: Coord) -> Vec<Segment> {
         duration: t,
     }]
 }
+
