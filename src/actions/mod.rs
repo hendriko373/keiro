@@ -3,7 +3,7 @@ use geo::Coord;
 use itertools::Itertools;
 use std::cmp::Ordering;
 
-use crate::actions::graphs::create_graph;
+use crate::actions::graphs::find_path_2d;
 
 pub mod data;
 mod graphs;
