@@ -69,7 +69,7 @@ pub struct Schedule {
 }
 
 /// A segment of a path
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Segment {
     /// The starting coordinate of the segment
     pub start: Coord,

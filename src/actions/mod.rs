@@ -3,8 +3,6 @@ use geo::Coord;
 use itertools::Itertools;
 use std::cmp::Ordering;
 
-use crate::actions::graphs::find_path_2d;
-
 pub mod data;
 mod graphs;
 
@@ -94,10 +92,7 @@ pub fn routes(agents: &Vec<Agent>, sched: Schedule) -> Routing {
 /// target and resolve any existing conflicts.
 fn execute_action(action: &Action, r: Vec<(Agent, Vec<Path>)>) -> Vec<(Agent, Vec<Path>)> {
     let paths = agent_paths(&action.agent, &r);
-    let path_2d = find_path_2d(
-        action,
-        paths.iter().last().unwrap().action.target.clone(),
-    );
+    let path_2d = find_path_2d(action, paths.iter().last().unwrap().action.target.clone());
 
     let mut result = r;
     while let Some(conflict) = first_conflict(&action.agent, &path_2d, &result) {
@@ -265,4 +260,3 @@ fn find_path_2d(a: &Action, p: Coord) -> Vec<Segment> {
         duration: t,
     }]
 }
-

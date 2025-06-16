@@ -62,17 +62,15 @@ fn arb_schedule() -> impl Strategy<Value = (Vec<Agent>, Schedule)> {
                         ]),
                         vec![],
                     ))
-                    .difference(
-                        &Polygon::new(
-                            LineString::from(vec![
-                                (sds_acc_r[i], y_min),
-                                (x_max, y_min),
-                                (x_max, y_max),
-                                (sds_acc_r[i], y_max),
-                            ]),
-                            vec![],
-                        )
-                    );
+                    .difference(&Polygon::new(
+                        LineString::from(vec![
+                            (sds_acc_r[i], y_min),
+                            (x_max, y_min),
+                            (x_max, y_max),
+                            (sds_acc_r[i], y_max),
+                        ]),
+                        vec![],
+                    ));
                 agents.push(Agent {
                     name: format!("agent-{}", i),
                     position: Coord {
